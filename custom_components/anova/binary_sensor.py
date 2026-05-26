@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-
-from anova_wifi import APCUpdateSensor
+from typing import TYPE_CHECKING
 
 from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import AnovaConfigEntry
 from .entity import AnovaDescriptionEntity
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from anova_wifi import APCUpdateSensor
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+    from .coordinator import AnovaConfigEntry
 
 
 @dataclass(frozen=True, kw_only=True)

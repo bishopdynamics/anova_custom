@@ -1,16 +1,12 @@
-# homeassistant/components/anova/sensors.py
 """Support for Anova Sensors."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
 import logging
-from typing import Any
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
-from anova_wifi import APCUpdateSensor  # Beibehalten
-
-_LOGGER = logging.getLogger(__name__)
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -18,19 +14,28 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import UnitOfTemperature, UnitOfTime
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.typing import StateType
 
-from .coordinator import AnovaConfigEntry, AnovaCoordinator
 from .entity import AnovaDescriptionEntity
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from anova_wifi import APCUpdateSensor
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+    from homeassistant.helpers.typing import StateType
+
+    from .coordinator import AnovaConfigEntry, AnovaCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, kw_only=True)
 class AnovaSensorEntityDescription(SensorEntityDescription):
     """Describes an Anova sensor."""
-    value_fn: Callable[[APCUpdateSensor], StateType]
+
+    value_fn: Callable[[APCUpdateSensor], StateType | datetime]
 
 
 def _get(data: APCUpdateSensor, path: list[str]) -> Any:
@@ -40,47 +45,48 @@ def _get(data: APCUpdateSensor, path: list[str]) -> Any:
         prev = obj
         obj = getattr(obj, key, None) if not isinstance(obj, dict) else obj.get(key)
         if obj is None:
-            _LOGGER.debug("_get failed at key=%r, prev_type=%s, path=%r", key, type(prev).__name__, path)
+            _LOGGER.debug(
+                "_get failed at key=%r, prev_type=%s, path=%r",
+                key,
+                type(prev).__name__,
+                path,
+            )
             return None
     return obj
 
 
-def _parse_timestamp(ts: str | None):
+def _parse_timestamp(ts: str | None) -> datetime | None:
     """Parse Anova timestamp to datetime for HA.
-    
+
     HA's SensorDeviceClass.TIMESTAMP requires a datetime object, not a string!
     """
     if not ts:
         return None
     try:
-        from datetime import datetime, timezone
-        # Handle Z suffix
-        ts_normalized = ts.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(ts_normalized)
-        # Ensure timezone-aware
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except Exception as ex:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (TypeError, ValueError) as ex:
         _LOGGER.warning("Failed to parse timestamp %r: %s", ts, ex)
         return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
 
 
-def _calc_timer_ends_at(data):
+def _calc_timer_ends_at(data: APCUpdateSensor) -> datetime | None:
     """Calculate when the timer will end (started_at + initial seconds)."""
-    from datetime import timedelta
-    
-    started_at = _parse_timestamp(_get(data, ["raw", "payload", "state", "nodes", "timer", "startedAtTimestamp"]))
+    started_at = _parse_timestamp(
+        _get(data, ["raw", "payload", "state", "nodes", "timer", "startedAtTimestamp"])
+    )
     initial_secs = _get(data, ["raw", "payload", "state", "nodes", "timer", "initial"])
     timer_mode = _get(data, ["raw", "payload", "state", "nodes", "timer", "mode"])
-    
+
     # Only calculate if timer is running
     if timer_mode != "running" or not started_at or not initial_secs:
         return None
-    
+
     try:
         return started_at + timedelta(seconds=int(initial_secs))
-    except Exception as ex:
+    except (TypeError, ValueError, OverflowError) as ex:
         _LOGGER.warning("Failed to calc timer_ends_at: %s", ex)
         return None
 
@@ -104,23 +110,24 @@ SENSOR_DESCRIPTIONS: list[AnovaSensorEntityDescription] = [
         value_fn=lambda d: d.target_temperature,
     ),
     # heater_temperature and triac_temperature removed - not useful for Nano
-
     # --- API Mode (RAW, genau wie gesendet) ---
     # Vorher ENUM mit AnovaMode -> jetzt RAW-String aus API (z.B. "cook")
     AnovaSensorEntityDescription(
         key="mode",
         translation_key="mode",
         # absichtlich KEIN device_class=ENUM, damit beliebige API-Strings durchgehen
-        value_fn=lambda d: _get(d, ["raw", "payload", "state", "state", "mode"]) or d.mode,
+        value_fn=lambda d: (
+            _get(d, ["raw", "payload", "state", "state", "mode"]) or d.mode
+        ),
     ),
-
     # Active Stage Mode (z.B. "running" / "paused")
     AnovaSensorEntityDescription(
         key="active_stage_mode",
         translation_key="active_stage_mode",
-        value_fn=lambda d: _get(d, ["raw", "payload", "state", "cook", "activeStageMode"]),
+        value_fn=lambda d: _get(
+            d, ["raw", "payload", "state", "cook", "activeStageMode"]
+        ),
     ),
-
     # --- Cook time (gesamt / verbleibend) als Rohsensoren ---
     AnovaSensorEntityDescription(
         key="cook_time",
@@ -135,47 +142,66 @@ SENSOR_DESCRIPTIONS: list[AnovaSensorEntityDescription] = [
         translation_key="timer_ends_at",
         device_class=SensorDeviceClass.TIMESTAMP,
         # Calculated from started_at + initial - frontend does the countdown
-        value_fn=lambda d: _calc_timer_ends_at(d),
+        value_fn=_calc_timer_ends_at,
     ),
-
     # --- Timer (RAW) ---
     AnovaSensorEntityDescription(
         key="timer_initial",
         native_unit_of_measurement=UnitOfTime.MINUTES,
         translation_key="timer_initial",
         device_class=SensorDeviceClass.DURATION,
-        value_fn=lambda d: round(_get(d, ["raw", "payload", "state", "nodes", "timer", "initial"]) / 60, 1) if _get(d, ["raw", "payload", "state", "nodes", "timer", "initial"]) else None,
+        value_fn=lambda d: (
+            round(
+                _get(d, ["raw", "payload", "state", "nodes", "timer", "initial"]) / 60,
+                1,
+            )
+            if _get(d, ["raw", "payload", "state", "nodes", "timer", "initial"])
+            else None
+        ),
     ),
     AnovaSensorEntityDescription(
         key="timer_mode",
         translation_key="timer_mode",
-        value_fn=lambda d: _get(d, ["raw", "payload", "state", "nodes", "timer", "mode"]),
+        value_fn=lambda d: _get(
+            d, ["raw", "payload", "state", "nodes", "timer", "mode"]
+        ),
     ),
     AnovaSensorEntityDescription(
         key="timer_started_at",
         translation_key="timer_started_at",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda d: _parse_timestamp(_get(d, ["raw", "payload", "state", "nodes", "timer", "startedAtTimestamp"])),
+        value_fn=lambda d: _parse_timestamp(
+            _get(d, ["raw", "payload", "state", "nodes", "timer", "startedAtTimestamp"])
+        ),
     ),
-
     # --- Diagnostics ---
     AnovaSensorEntityDescription(
         key="firmware_version",
         translation_key="firmware_version",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: getattr(d, "firmware_version", None) or _get(d, ["raw", "payload", "state", "systemInfo", "firmwareVersion"]),
+        value_fn=lambda d: (
+            getattr(d, "firmware_version", None)
+            or _get(d, ["raw", "payload", "state", "systemInfo", "firmwareVersion"])
+        ),
     ),
     AnovaSensorEntityDescription(
         key="hardware_version",
         translation_key="hardware_version",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: getattr(d, "hardware_version", None) or _get(d, ["raw", "payload", "state", "systemInfo", "hardwareVersion"]),
+        value_fn=lambda d: (
+            getattr(d, "hardware_version", None)
+            or _get(d, ["raw", "payload", "state", "systemInfo", "hardwareVersion"])
+        ),
     ),
     AnovaSensorEntityDescription(
         key="online",
         translation_key="online",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: getattr(d, "online", None) if getattr(d, "online", None) is not None else _get(d, ["raw", "payload", "state", "systemInfo", "online"]),
+        value_fn=lambda d: (
+            getattr(d, "online", None)
+            if getattr(d, "online", None) is not None
+            else _get(d, ["raw", "payload", "state", "systemInfo", "online"])
+        ),
     ),
 ]
 
@@ -211,6 +237,6 @@ class AnovaSensor(AnovaDescriptionEntity, SensorEntity):
     entity_description: AnovaSensorEntityDescription
 
     @property
-    def native_value(self) -> StateType:
+    def native_value(self) -> StateType | datetime:
         """Return the state."""
         return self.entity_description.value_fn(self.coordinator.data.sensor)
