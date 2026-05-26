@@ -107,9 +107,10 @@ class AnovaCoordinator(DataUpdateCoordinator[APCUpdate]):
 
     def _handle_update(self, update: APCUpdate) -> None:
         """Receive device update, enrich sensor with raw payload, propagate.
-        
-        NOTE: This must be a sync function because anova_wifi calls update_listeners
-        without await. We schedule the async work via asyncio.create_task().
+
+        anova_wifi invokes this synchronously from inside its async websocket
+        handler — i.e. already on the HA event loop — so we can call the
+        sync @callback async_set_updated_data directly.
         """
         _LOGGER.info(
             "[ANOVA-COORD] ═══════════════════════════════════════════════════"
@@ -174,7 +175,4 @@ class AnovaCoordinator(DataUpdateCoordinator[APCUpdate]):
         _LOGGER.info(
             "[ANOVA-COORD] ═══════════════════════════════════════════════════"
         )
-        self.hass.loop.call_soon_threadsafe(
-            self.hass.async_create_task,
-            self.async_set_updated_data(update)
-        )
+        self.async_set_updated_data(update)
