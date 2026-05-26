@@ -63,29 +63,11 @@
       }
     },
     "binary_sensor": {
-      "cooking": {
-        "name": "Kocht"
-      },
-      "preheating": {
-        "name": "Heizt vor"
-      },
-      "maintaining": {
-        "name": "Hält Temperatur"
-      },
-      "device_safe": {
-        "name": "Gerät sicher"
-      },
-      "water_leak": {
-        "name": "Wasserleck"
-      },
-      "water_level_critical": {
-        "name": "Wasserstand kritisch"
-      },
-      "water_temp_too_high": {
-        "name": "Wasser zu heiß"
-      },
-      "water_level_low": {
+      "low_water_warning": {
         "name": "Wasserstand niedrig"
+      },
+      "low_water_empty": {
+        "name": "Wassertank leer"
       }
     }
   }

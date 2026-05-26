@@ -64,6 +64,14 @@
       "online": {
         "name": "Online"
       }
+    },
+    "binary_sensor": {
+      "low_water_warning": {
+        "name": "Low water warning"
+      },
+      "low_water_empty": {
+        "name": "Low water empty"
+      }
     }
   }
 }

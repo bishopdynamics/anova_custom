@@ -63,29 +63,11 @@
       }
     },
     "binary_sensor": {
-      "cooking": {
-        "name": "Cooking"
-      },
-      "preheating": {
-        "name": "Preheating"
-      },
-      "maintaining": {
-        "name": "Maintaining"
-      },
-      "device_safe": {
-        "name": "Device safe"
-      },
-      "water_leak": {
-        "name": "Water leak"
-      },
-      "water_level_critical": {
-        "name": "Low water critical"
-      },
-      "water_temp_too_high": {
-        "name": "Water too hot"
-      },
-      "water_level_low": {
+      "low_water_warning": {
         "name": "Low water warning"
+      },
+      "low_water_empty": {
+        "name": "Low water empty"
       }
     }
   }
