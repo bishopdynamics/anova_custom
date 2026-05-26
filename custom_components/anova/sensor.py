@@ -72,8 +72,8 @@ def _parse_timestamp(ts: str | None) -> datetime | None:
     return dt
 
 
-def _calc_timer_ends_at(data: APCUpdateSensor) -> datetime | None:
-    """Calculate when the timer will end (started_at + initial seconds)."""
+def _calc_cook_time_remaining(data: APCUpdateSensor) -> float | None:
+    """Calculate remaining cook time in minutes."""
     started_at = _parse_timestamp(
         _get(data, ["raw", "payload", "state", "nodes", "timer", "startedAtTimestamp"])
     )
@@ -85,10 +85,13 @@ def _calc_timer_ends_at(data: APCUpdateSensor) -> datetime | None:
         return None
 
     try:
-        return started_at + timedelta(seconds=int(initial_secs))
+        ends_at = started_at + timedelta(seconds=int(initial_secs))
     except (TypeError, ValueError, OverflowError) as ex:
-        _LOGGER.warning("Failed to calc timer_ends_at: %s", ex)
+        _LOGGER.warning("Failed to calc cook_time_remaining: %s", ex)
         return None
+
+    remaining_minutes = (ends_at - datetime.now(UTC)).total_seconds() / 60
+    return round(max(0.0, remaining_minutes), 1)
 
 
 SENSOR_DESCRIPTIONS: list[AnovaSensorEntityDescription] = [
@@ -138,41 +141,11 @@ SENSOR_DESCRIPTIONS: list[AnovaSensorEntityDescription] = [
         value_fn=lambda d: round(d.cook_time / 60, 1) if d.cook_time else None,
     ),
     AnovaSensorEntityDescription(
-        key="timer_ends_at",
-        translation_key="timer_ends_at",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        # Calculated from started_at + initial - frontend does the countdown
-        value_fn=_calc_timer_ends_at,
-    ),
-    # --- Timer (RAW) ---
-    AnovaSensorEntityDescription(
-        key="timer_initial",
-        native_unit_of_measurement=UnitOfTime.MINUTES,
-        translation_key="timer_initial",
+        key="cook_time_remaining",
+        translation_key="cook_time_remaining",
         device_class=SensorDeviceClass.DURATION,
-        value_fn=lambda d: (
-            round(
-                _get(d, ["raw", "payload", "state", "nodes", "timer", "initial"]) / 60,
-                1,
-            )
-            if _get(d, ["raw", "payload", "state", "nodes", "timer", "initial"])
-            else None
-        ),
-    ),
-    AnovaSensorEntityDescription(
-        key="timer_mode",
-        translation_key="timer_mode",
-        value_fn=lambda d: _get(
-            d, ["raw", "payload", "state", "nodes", "timer", "mode"]
-        ),
-    ),
-    AnovaSensorEntityDescription(
-        key="timer_started_at",
-        translation_key="timer_started_at",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda d: _parse_timestamp(
-            _get(d, ["raw", "payload", "state", "nodes", "timer", "startedAtTimestamp"])
-        ),
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        value_fn=_calc_cook_time_remaining,
     ),
     # --- Diagnostics ---
     AnovaSensorEntityDescription(

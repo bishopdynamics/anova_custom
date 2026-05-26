@@ -25,15 +25,6 @@
       "cook_time_remaining": {
         "default": "mdi:timer-sand"
       },
-      "timer_initial": {
-        "default": "mdi:timer"
-      },
-      "timer_mode": {
-        "default": "mdi:timer-cog"
-      },
-      "timer_started_at": {
-        "default": "mdi:clock-start"
-      },
       "firmware_version": {
         "default": "mdi:chip"
       },

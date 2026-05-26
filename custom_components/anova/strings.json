@@ -43,17 +43,8 @@
       "cook_time": {
         "name": "Cook time"
       },
-      "timer_ends_at": {
-        "name": "Timer ends at"
-      },
-      "timer_initial": {
-        "name": "Timer duration"
-      },
-      "timer_mode": {
-        "name": "Timer mode"
-      },
-      "timer_started_at": {
-        "name": "Timer started at"
+      "cook_time_remaining": {
+        "name": "Cook time remaining"
       },
       "firmware_version": {
         "name": "Firmware version"

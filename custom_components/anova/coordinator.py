@@ -4,17 +4,24 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from anova_wifi import AnovaApi, APCUpdate, APCWifiDevice
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DOMAIN
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from homeassistant.core import HomeAssistant
+
+REFRESH_INTERVAL = timedelta(seconds=30)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,20 +50,11 @@ def _dig(d: dict, path: list[str], default: Any = None) -> Any:
 
 def _enrich_sensor_from_raw(sensor_obj: Any, raw: dict) -> None:
     """Attach raw WS fields to APCUpdate.sensor in-place (idempotent)."""
-    # Mode (roh, 1:1 aus API)
+    # Mode (raw, 1:1 from API)
     if getattr(sensor_obj, "mode_raw", None) is None:
         sensor_obj.mode_raw = _dig(raw, ["payload", "state", "state", "mode"])
 
-    # Timer-Rohwerte
-    timer = _dig(raw, ["payload", "state", "nodes", "timer"], {}) or {}
-    if getattr(sensor_obj, "timer_initial", None) is None:
-        sensor_obj.timer_initial = timer.get("initial")
-    if getattr(sensor_obj, "timer_mode", None) is None:
-        sensor_obj.timer_mode = timer.get("mode")
-    if getattr(sensor_obj, "timer_started_at", None) is None:
-        sensor_obj.timer_started_at = timer.get("startedAtTimestamp")
-
-    # Low-Water
+    # Low-water
     loww = _dig(raw, ["payload", "state", "nodes", "lowWater"], {}) or {}
     if getattr(sensor_obj, "low_water_warning", None) is None:
         sensor_obj.low_water_warning = loww.get("warning")
@@ -107,6 +105,20 @@ class AnovaCoordinator(DataUpdateCoordinator[APCUpdate]):
             model="Precision Cooker",
         )
         self.sensor_data_set: bool = False
+
+        # Periodic refresh so duration sensors (e.g. cook_time_remaining) can
+        # recompute against "now" between WS messages.
+        config_entry.async_on_unload(
+            async_track_time_interval(
+                hass, self._async_periodic_refresh, REFRESH_INTERVAL
+            )
+        )
+
+    @callback
+    def _async_periodic_refresh(self, _now: datetime) -> None:
+        """Notify listeners so time-dependent sensors recompute."""
+        if self.data is not None:
+            self.async_update_listeners()
 
     def _handle_update(self, update: APCUpdate) -> None:
         """Receive device update, enrich sensor with raw payload, propagate.
