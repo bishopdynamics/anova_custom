@@ -9,5 +9,5 @@
   "requirements": [
     "anova-wifi @ git+https://github.com/bishopdynamics/anova_wifi@v0.29.0"
   ],
-  "version": "1.9.0"
+  "version": "1.9.1"
 }
