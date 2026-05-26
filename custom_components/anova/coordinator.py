@@ -112,13 +112,6 @@ class AnovaCoordinator(DataUpdateCoordinator[APCUpdate]):
         handler — i.e. already on the HA event loop — so we can call the
         sync @callback async_set_updated_data directly.
         """
-        _LOGGER.info(
-            "[ANOVA-COORD] ═══════════════════════════════════════════════════"
-        )
-        _LOGGER.info(
-            "[ANOVA-COORD] _handle_update called for device %s", 
-            self.device_unique_id
-        )
         try:
             # Roh-Payload bestmöglich beschaffen
             raw: Optional[dict] = None
@@ -143,36 +136,10 @@ class AnovaCoordinator(DataUpdateCoordinator[APCUpdate]):
                 # Attach the raw dict directly so sensor.py can access it via _get(d, ["raw", ...])
                 setattr(update.sensor, "raw", raw)
                 _enrich_sensor_from_raw(update.sensor, raw)
-                
-                # Log timer state for debugging
-                timer = _dig(raw, ["payload", "state", "nodes", "timer"], {}) or {}
-                _LOGGER.info(
-                    "[ANOVA-COORD] Timer: mode=%s | initial=%s | startedAt=%s",
-                    timer.get("mode"),
-                    timer.get("initial"),
-                    timer.get("startedAtTimestamp")
-                )
             else:
                 _LOGGER.debug("Anova: no raw payload available for enrichment (ok).")
 
         except Exception as exc:  # defensiv — Enrichment darf niemals den Update-Flow brechen
             _LOGGER.debug("Anova enrich failed: %r", exc)
 
-        # Update weiterreichen — schedule async call from sync context (thread-safe)
-        sensor = getattr(update, 'sensor', None)
-        _LOGGER.info(
-            "[ANOVA-COORD] Propagating update. has_sensor=%s | has_raw=%s",
-            sensor is not None,
-            hasattr(sensor, 'raw') if sensor else False
-        )
-        if sensor:
-            _LOGGER.info(
-                "[ANOVA-COORD] sensor attrs: mode_raw=%s | timer_mode=%s | timer_initial=%s",
-                getattr(sensor, 'mode_raw', 'N/A'),
-                getattr(sensor, 'timer_mode', 'N/A'),
-                getattr(sensor, 'timer_initial', 'N/A')
-            )
-        _LOGGER.info(
-            "[ANOVA-COORD] ═══════════════════════════════════════════════════"
-        )
         self.async_set_updated_data(update)

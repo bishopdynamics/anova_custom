@@ -62,7 +62,7 @@ def _parse_timestamp(ts: str | None):
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
     except Exception as ex:
-        _LOGGER.warning("[ANOVA-SENSOR] Failed to parse timestamp %r: %s", ts, ex)
+        _LOGGER.warning("Failed to parse timestamp %r: %s", ts, ex)
         return None
 
 
@@ -81,7 +81,7 @@ def _calc_timer_ends_at(data):
     try:
         return started_at + timedelta(seconds=int(initial_secs))
     except Exception as ex:
-        _LOGGER.warning("[ANOVA-SENSOR] Failed to calc timer_ends_at: %s", ex)
+        _LOGGER.warning("Failed to calc timer_ends_at: %s", ex)
         return None
 
 
@@ -200,8 +200,9 @@ def setup_coordinator(
     # This is better than lazy creation which can leave sensors missing entirely
     entities = [AnovaSensor(coordinator, desc) for desc in SENSOR_DESCRIPTIONS]
     async_add_entities(entities)
-    _LOGGER.info("[ANOVA-SENSOR] Created %d sensors for device %s", 
-                 len(entities), coordinator.device_unique_id)
+    _LOGGER.info(
+        "Created %d sensors for device %s", len(entities), coordinator.device_unique_id
+    )
 
 
 class AnovaSensor(AnovaDescriptionEntity, SensorEntity):
